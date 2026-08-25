@@ -42,6 +42,11 @@ def load_models():
 
 model, preprocessor = load_models()
 
+# Both the model and its preprocessor must load together, or predictions will fail later
+if model is not None and preprocessor is None:
+    st.error("Model loaded but preprocessor is missing. Cannot make predictions.")
+    st.stop()
+
 if model is not None:
     st.success("✅ Models loaded successfully!")
     
@@ -67,6 +72,11 @@ if model is not None:
         submitted = st.form_submit_button("🚀 Predict Exam Score")
         
         if submitted:
+            # Guard against degenerate inputs, in case this logic is ever driven by something other than the sliders
+            if hours_studied <= 0 or attendance <= 0:
+                st.warning("Hours studied and attendance must be greater than zero for a meaningful prediction.")
+                st.stop()
+
             input_data = pd.DataFrame([{
                 'Hours_Studied': hours_studied,
                 'Attendance': attendance,
@@ -92,7 +102,15 @@ if model is not None:
             try:
                 X_processed = preprocessor.transform(input_data)
                 prediction = model.predict(X_processed)[0]
-                
+
+                # Catch a broken/NaN prediction before it reaches the UI
+                if np.isnan(prediction) or np.isinf(prediction):
+                    st.error("Prediction failed — the model returned an invalid result. Please try different inputs.")
+                    st.stop()
+
+                # Exam scores are realistically bounded 0-100, even if the regression model isn't
+                prediction = float(np.clip(prediction, 0, 100))
+
                 st.balloons()
                 st.markdown(f"""
                 <div style='background: linear-gradient(135deg, #667eea20, #764ba220); border-radius: 20px; padding: 2rem; text-align: center;'>
